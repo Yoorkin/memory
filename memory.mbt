@@ -21,6 +21,7 @@ pub fn load32(self : Memory, offset : Int) -> Option[Int] {
     Some(load32_ffi(self.offset + offset))
   }
 }
+
 /// Load Int64 读取64位整数
 pub fn load64(self : Memory, offset : Int) -> Option[Int64] {
   if offset < 0 || offset + 8 > self.length {
@@ -192,7 +193,7 @@ pub fn allocate(size : Int) -> Option[Memory] {
 }
 
 /// Free Memory 释放内存
-pub fn free(self : Memory) -> Bool {
+pub fn free(self : Memory) -> Option[Unit] {
   let mut ptr : Option[Chunk] = Some(memory.start)
   let mut has_next = true
   while has_next {
@@ -244,12 +245,13 @@ pub fn free(self : Memory) -> Bool {
           }
           _ => ()
         }
+        return Some(())
       } else {
         ptr = chunk.next
       }
     }
   }
-  false
+  None
 }
 
 /// Reallocate Memory 重新分配内存
