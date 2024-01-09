@@ -2,7 +2,7 @@
 pub(readonly) struct Memory {
   offset : Int
   length : Int
-}
+} derive(Debug)
 
 /// Load Byte 读取字节
 pub fn load8(self : Memory, offset : Int) -> Option[Int] {
@@ -104,15 +104,53 @@ priv struct Chunk {
   mut occupied : Bool
   mut prev : Option[Chunk]
   mut next : Option[Chunk]
-}
+} derive(Debug)
 
 priv struct LinearMemory {
   mut start : Chunk
   mut end : Chunk
 }
 
+fn debug_write(self : LinearMemory, buffer : Buffer) {
+  self.to_array().debug_write(buffer)
+}
+
+fn to_array(self : LinearMemory) -> Array[(Memory, Bool)] {
+  let mut length = 0
+  let mut ptr : Option[Chunk] = Some(self.start)
+  let mut has_next = true
+  while has_next {
+    match ptr {
+      None => {
+        has_next = false
+      }
+      Some(chunk) => {
+        length = length + 1
+        ptr = chunk.next
+      }
+    }
+  }
+  let array = Array::make(length, ({ offset: 0, length: 0 }, true))
+  let mut length = 0
+  let mut ptr : Option[Chunk] = Some(self.start)
+  let mut has_next = true
+  while has_next {
+    match ptr {
+      None => {
+        has_next = false
+      }
+      Some(chunk) => {
+        array[length] = (chunk.memory, chunk.occupied)
+        length = length + 1
+        ptr = chunk.next
+      }
+    }
+  }
+  array
+}
+
 let memory : LinearMemory = {
-  let length = memory_size_ffi()
+  let length = memory_size_ffi().lsl(16)
   let chunk = {
     memory: { offset: 0, length },
     occupied: false,
@@ -125,14 +163,11 @@ let memory : LinearMemory = {
 fn grow(self : LinearMemory, size : Int) -> Bool {
   let delta = size.lsr(16) + 1
   let old_size = memory_size_ffi()
-  let new_size = memory_grow_ffi(delta)
-  if new_size >= old_size + delta {
+  let errno = memory_grow_ffi(delta)
+  if errno != -1 {
     if self.end.occupied {
       let chunk : Chunk = {
-        memory: {
-          offset: old_size.lsl(16),
-          length: (new_size - old_size).lsl(16),
-        },
+        memory: { offset: old_size.lsl(16), length: delta.lsl(16) },
         occupied: false,
         prev: Some(self.end),
         next: None,
@@ -141,11 +176,13 @@ fn grow(self : LinearMemory, size : Int) -> Bool {
       self.end = chunk
     } else {
       self.end.memory = {..self.end.memory,
-        length: self.end.memory.length + (new_size - old_size).lsl(16),
+        length: self.end.memory.length + delta.lsl(16),
       }
     }
+    true
+  } else {
+    false
   }
-  new_size >= old_size + delta
 }
 
 /// Allocate memory 分配内存
@@ -157,7 +194,7 @@ pub fn allocate(size : Int) -> Option[Memory] {
       None => {
         has_next = false
       }
-      Some(chunk) => if chunk.memory.length < size {
+      Some({ occupied: false, .. } as chunk) => if chunk.memory.length < size {
         ptr = chunk.next
       } else if chunk.memory.length == size {
         chunk.occupied = true
@@ -176,12 +213,17 @@ pub fn allocate(size : Int) -> Option[Memory] {
         chunk.occupied = true
         chunk.next = Some(new_chunk)
         match new_chunk.next {
-          None => ()
+          None => {
+            memory.end = new_chunk
+          }
           Some(c) => {
             c.prev = Some(new_chunk)
           }
         }
         return Some(chunk.memory)
+      }
+      Some(chunk) => {
+        ptr = chunk.next
       }
     }
   }
@@ -202,7 +244,7 @@ pub fn free(self : Memory) -> Option[Unit] {
         has_next = false
       }
       Some(chunk) => if chunk.memory.length == self.length && chunk.memory.offset ==
-      self.offset {
+      self.offset && chunk.occupied {
         chunk.occupied = false
         match (chunk.prev, chunk.next) {
           (
@@ -222,6 +264,13 @@ pub fn free(self : Memory) -> Option[Unit] {
               }
             }
           }
+          (Some({ occupied: false, .. } as prev), Some(next)) => {
+            prev.memory = {..prev.memory,
+              length: prev.memory.length + chunk.memory.length,
+            }
+            prev.next = Some(next)
+            next.prev = Some(prev)
+          }
           (Some({ occupied: false, .. } as prev), None) => {
             prev.memory = {..prev.memory,
               length: prev.memory.length + chunk.memory.length,
@@ -229,7 +278,7 @@ pub fn free(self : Memory) -> Option[Unit] {
             prev.next = None
             memory.end = prev
           }
-          (None, Some({ occupied: false, .. } as next)) => {
+          (_, Some({ occupied: false, .. } as next)) => {
             chunk.memory = {..chunk.memory,
               length: chunk.memory.length + next.memory.length,
             }
@@ -265,5 +314,6 @@ pub fn reallocate(self : Memory, _alignment : Int, new_length : Int) ->
     new_length
   }
   memory_copy_ffi(self.offset, new_memory.offset, length)
+  self.free()
   Some(new_memory)
 }
