@@ -278,6 +278,7 @@ fn Chunk::free(chunk : Chunk) {
     }
     _ => ()
   }
+  
 }
 
 /// Free Memory 释放内存
@@ -378,6 +379,7 @@ pub fn reallocate(self : Memory, _alignment : Int, new_length : Int) ->
             memory_copy_ffi(self.offset, new_memory.offset, self.length)
             return Some(new_memory)
           } else {
+            chunk.occupied = true
             chunk.split(new_length)
             memory_copy_ffi(self.offset, chunk.memory.offset, self.length)
             return Some(chunk.memory)
