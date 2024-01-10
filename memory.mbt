@@ -187,6 +187,9 @@ fn grow(self : LinearMemory, size : Int) -> Bool {
 
 /// Allocate memory 分配内存
 pub fn allocate(size : Int) -> Option[Memory] {
+  if size <= 0 {
+    return None
+  }
   let mut ptr : Option[Chunk] = Some(memory.start)
   let mut has_next = true
   while has_next {
@@ -196,30 +199,12 @@ pub fn allocate(size : Int) -> Option[Memory] {
       }
       Some({ occupied: false, .. } as chunk) => if chunk.memory.length < size {
         ptr = chunk.next
-      } else if chunk.memory.length == size {
-        chunk.occupied = true
-        return Some(chunk.memory)
       } else {
-        let new_chunk : Chunk = {
-          memory: {
-            offset: chunk.memory.offset + size,
-            length: chunk.memory.length - size,
-          },
-          occupied: false,
-          prev: Some(chunk),
-          next: chunk.next,
+        if chunk.memory.length > size {
+          let _ = chunk.split(size)?
+
         }
-        chunk.memory = {..chunk.memory, length: size }
         chunk.occupied = true
-        chunk.next = Some(new_chunk)
-        match new_chunk.next {
-          None => {
-            memory.end = new_chunk
-          }
-          Some(c) => {
-            c.prev = Some(new_chunk)
-          }
-        }
         return Some(chunk.memory)
       }
       Some(chunk) => {
@@ -234,6 +219,67 @@ pub fn allocate(size : Int) -> Option[Memory] {
   }
 }
 
+/// return merged or self
+fn Chunk::merge_next(chunk : Chunk, next : Chunk) -> Chunk {
+  chunk.memory = {..chunk.memory,
+    length: chunk.memory.length + next.memory.length,
+  }
+  match next.next {
+    Some(next_next) => {
+      chunk.next = Some(next_next)
+      next_next.prev = Some(chunk)
+    }
+    None => {
+      chunk.next = None
+      memory.end = chunk
+    }
+  }
+  chunk
+}
+
+/// return next
+fn Chunk::split(chunk : Chunk, length : Int) -> Option[Chunk] {
+  if length < chunk.memory.length {
+    let new_chunk : Chunk = {
+      memory: {
+        offset: chunk.memory.offset + length,
+        length: chunk.memory.length - length,
+      },
+      occupied: false,
+      prev: Some(chunk),
+      next: chunk.next,
+    }
+    chunk.memory = {..chunk.memory, length, }
+    chunk.next = Some(new_chunk)
+    match new_chunk.next {
+      None => {
+        memory.end = new_chunk
+      }
+      Some(next_next) => {
+        next_next.prev = Some(new_chunk)
+      }
+    }
+    Some(new_chunk)
+  } else {
+    None
+  }
+}
+
+fn Chunk::free(chunk : Chunk) {
+  chunk.occupied = false
+  let chunk = match chunk.prev {
+    Some({ occupied: false, .. } as prev) => prev.merge_next(chunk)
+    _ => chunk
+  }
+  match chunk.next {
+    Some({ occupied: false, .. } as next) => {
+      let _ = chunk.merge_next(next)
+
+    }
+    _ => ()
+  }
+}
+
 /// Free Memory 释放内存
 pub fn free(self : Memory) -> Option[Unit] {
   let mut ptr : Option[Chunk] = Some(memory.start)
@@ -245,55 +291,7 @@ pub fn free(self : Memory) -> Option[Unit] {
       }
       Some(chunk) => if chunk.memory.length == self.length && chunk.memory.offset ==
       self.offset && chunk.occupied {
-        chunk.occupied = false
-        match (chunk.prev, chunk.next) {
-          (
-            Some({ occupied: false, .. } as prev),
-            Some({ occupied: false, .. } as next),
-          ) => {
-            prev.memory = {..prev.memory,
-              length: prev.memory.length + chunk.memory.length + next.memory.length,
-            }
-            prev.next = next.next
-            match next.next {
-              Some(next_next) => {
-                next_next.prev = Some(prev)
-              }
-              None => {
-                memory.end = prev
-              }
-            }
-          }
-          (Some({ occupied: false, .. } as prev), Some(next)) => {
-            prev.memory = {..prev.memory,
-              length: prev.memory.length + chunk.memory.length,
-            }
-            prev.next = Some(next)
-            next.prev = Some(prev)
-          }
-          (Some({ occupied: false, .. } as prev), None) => {
-            prev.memory = {..prev.memory,
-              length: prev.memory.length + chunk.memory.length,
-            }
-            prev.next = None
-            memory.end = prev
-          }
-          (_, Some({ occupied: false, .. } as next)) => {
-            chunk.memory = {..chunk.memory,
-              length: chunk.memory.length + next.memory.length,
-            }
-            chunk.next = next.next
-            match next.next {
-              Some(next_next) => {
-                next_next.prev = Some(chunk)
-              }
-              None => {
-                memory.end = chunk
-              }
-            }
-          }
-          _ => ()
-        }
+        chunk.free()
         return Some(())
       } else {
         ptr = chunk.next
@@ -303,17 +301,97 @@ pub fn free(self : Memory) -> Option[Unit] {
   None
 }
 
+pub fn cabi_realloc(origin_offset : Int, origin_length : Int, _alignment : Int,
+        new_length : Int) -> Int {
+  let reallocated = { offset: origin_offset, length: origin_length }.reallocate(
+    _alignment,
+    new_length,
+  )
+  match reallocated {
+    Some(memory) => memory.offset
+    None => -1
+  }
+}
+
 /// Reallocate Memory 重新分配内存
 pub fn reallocate(self : Memory, _alignment : Int, new_length : Int) ->
      Option[Memory] {
-  // TODO: write a better one
-  let new_memory = allocate(new_length)?
-  let length = if self.length < new_length {
-    self.length
+  if self.length <= 0 {
+    allocate(new_length)
+  } else if new_length <= 0 {
+    self.free()
+    None
+  } else if new_length < self.length {
+    let mut ptr : Option[Chunk] = Some(memory.start)
+    let mut has_next = true
+    while has_next {
+      match ptr {
+        None => {
+          has_next = false
+        }
+        Some({ occupied: true, .. } as chunk) => if chunk.memory.offset == self.offset &&
+        chunk.memory.length == self.length {
+          match chunk.next {
+            Some({ occupied: false, .. } as next) => {
+              chunk.merge_next(next)
+              let _ = chunk.split(new_length)
+              return Some(chunk.memory)
+            }
+            _ => {
+              let _ = chunk.split(new_length)
+              return Some(chunk.memory)
+            }
+          }
+        }
+        Some(chunk) => if chunk.memory.offset > self.offset {
+          has_next = false
+        } else {
+          ptr = chunk.next
+        }
+      }
+    }
+    None
   } else {
-    new_length
+    let mut ptr : Option[Chunk] = Some(memory.start)
+    let mut has_next = true
+    while has_next {
+      match ptr {
+        None => {
+          has_next = false
+        }
+        Some({ occupied: true, .. } as chunk) => if chunk.memory.offset == self.offset &&
+        chunk.memory.length == self.length {
+          chunk.occupied = false
+          let chunk = match chunk.prev {
+            Some({ occupied: false, .. } as prev) => prev.merge_next(chunk)
+            _ => chunk
+          }
+          match chunk.next {
+            Some({ occupied: false, .. } as next) => {
+              let _ = chunk.merge_next(next)
+
+            }
+            _ => ()
+          }
+          if chunk.memory.length < new_length {
+            let new_memory = allocate(new_length).unwrap()
+            memory_copy_ffi(self.offset, new_memory.offset, self.length)
+            return Some(new_memory)
+          } else {
+            chunk.split(new_length)
+            memory_copy_ffi(self.offset, chunk.memory.offset, self.length)
+            return Some(chunk.memory)
+          }
+        } else {
+          ptr = chunk.next
+        }
+        Some(chunk) => if chunk.memory.offset > self.offset {
+          has_next = false
+        } else {
+          ptr = chunk.next
+        }
+      }
+    }
+    None
   }
-  memory_copy_ffi(self.offset, new_memory.offset, length)
-  self.free()
-  Some(new_memory)
 }
