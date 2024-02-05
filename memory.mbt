@@ -81,23 +81,23 @@ pub fn store_bytes(self : Memory, bytes : Bytes) -> Unit {
   }
 }
 
-fn load8_ffi(pos : Int) -> Int = "(func $load8 (param $pos i32) (result i32) (i32.load8_u (local.get $pos)))"
+fn load8_ffi(pos : Int) -> Int = "(func (param $pos i32) (result i32) (i32.load8_u (local.get $pos)))"
 
-fn load32_ffi(pos : Int) -> Int = "(func $load32 (param $pos i32) (result i32) (i32.load (local.get $pos)))"
+fn load32_ffi(pos : Int) -> Int = "(func (param $pos i32) (result i32) (i32.load (local.get $pos)))"
 
-fn load64_ffi(pos : Int) -> Int64 = "(func $load64 (param $pos i32) (result i64) (i64.load (local.get $pos)))"
+fn load64_ffi(pos : Int) -> Int64 = "(func (param $pos i32) (result i64) (i64.load (local.get $pos)))"
 
-fn store8_ffi(pos : Int, value : Int) = "(func $store8 (param $pos i32) (param $value i32) (i32.store8 (local.get $pos) (local.get $value)))"
+fn store8_ffi(pos : Int, value : Int) = "(func (param $pos i32) (param $value i32) (i32.store8 (local.get $pos) (local.get $value)))"
 
-fn store32_ffi(pos : Int, value : Int) = "(func $store32 (param $pos i32) (param $value i32) (i32.store (local.get $pos) (local.get $value)))"
+fn store32_ffi(pos : Int, value : Int) = "(func (param $pos i32) (param $value i32) (i32.store (local.get $pos) (local.get $value)))"
 
-fn store64_ffi(pos : Int, value : Int64) = "(func $store64 (param $pos i32) (param $value i64) (i64.store (local.get $pos) (local.get $value)))"
+fn store64_ffi(pos : Int, value : Int64) = "(func (param $pos i32) (param $value i64) (i64.store (local.get $pos) (local.get $value)))"
 
-fn memory_size_ffi() -> Int = "(func $memory_size (result i32) (memory.size))"
+fn memory_size_ffi() -> Int = "(func (result i32) (memory.size))"
 
-fn memory_grow_ffi(delta : Int) -> Int = "(func $memory_grow (param $size i32) (result i32) (memory.grow (local.get $size)))"
+fn memory_grow_ffi(delta : Int) -> Int = "(func (param $size i32) (result i32) (memory.grow (local.get $size)))"
 
-fn memory_copy_ffi(origin : Int, target : Int, len : Int) = "(func $memory_copy (param $origin i32) (param $target i32) (param $len i32) (memory.copy (local.get $origin) (local.get $target) (local.get $len)))"
+fn memory_copy_ffi(origin : Int, target : Int, len : Int) = "(func (param $origin i32) (param $target i32) (param $len i32) (memory.copy (local.get $origin) (local.get $target) (local.get $len)))"
 
 priv struct Chunk {
   mut memory : Memory
