@@ -61,8 +61,7 @@ pub fn store64(self : Memory, offset : Int, value : Int64) -> Option[Unit] {
 /// Load Bytes 读取数据块
 pub fn load_bytes(self : Memory) -> Bytes {
   let bytes = Bytes::make(self.length, 0)
-  let mut i = 0
-  while i < self.length, i = i + 1 {
+  for i = 0; i < self.length; i = i + 1 {
     bytes[i] = load8_ffi(self.offset + i)
   }
   bytes
@@ -75,8 +74,7 @@ pub fn store_bytes(self : Memory, bytes : Bytes) -> Unit {
   } else {
     bytes.length()
   }
-  let mut i = 0
-  while i < len, i = i + 1 {
+  for i = 0; i < len; i = i + 1 {
     store8_ffi(self.offset + i, bytes[i])
   }
 }
