@@ -114,34 +114,16 @@ fn debug_write(self : LinearMemory, buffer : Buffer) {
 }
 
 fn to_array(self : LinearMemory) -> Array[(Memory, Bool)] {
-  let mut length = 0
-  let mut ptr : Option[Chunk] = Some(self.start)
-  let mut has_next = true
-  while has_next {
-    match ptr {
-      None => {
-        has_next = false
-      }
-      Some(chunk) => {
-        length = length + 1
-        ptr = chunk.next
-      }
-    }
+  let length = loop Option::Some(self.start), 0 {
+    None, cumul => cumul
+    Some(chunk), cumul => continue chunk.next, cumul + 1
   }
   let array = Array::make(length, ({ offset: 0, length: 0 }, true))
-  let mut length = 0
-  let mut ptr : Option[Chunk] = Some(self.start)
-  let mut has_next = true
-  while has_next {
-    match ptr {
-      None => {
-        has_next = false
-      }
-      Some(chunk) => {
-        array[length] = (chunk.memory, chunk.occupied)
-        length = length + 1
-        ptr = chunk.next
-      }
+  loop Option::Some(self.start), 0 {
+    None, _ => ()
+    Some(chunk), index => {
+      array[index] = (chunk.memory, chunk.occupied)
+      continue chunk.next, index + 1
     }
   }
   array
@@ -167,24 +149,17 @@ pub fn Memory::make(offset : Int, length : Int) -> Option[Memory] {
 }
 
 fn Memory::locate_chunk(m : Memory) -> Option[Chunk] {
-  let mut ptr : Option[Chunk] = Some(memory.start)
-  let mut has_next = true
-  while has_next {
-    match ptr {
-      None => {
-        has_next = false
-      }
-      Some(chunk) => if chunk.memory.length == m.length && chunk.memory.offset ==
-      m.offset {
-        return Some(chunk)
+  loop Option::Some(memory.start) {
+    None => None
+    Some(chunk) =>
+      if chunk.memory.length == m.length && chunk.memory.offset == m.offset {
+        Some(chunk)
       } else if chunk.memory.offset < m.offset {
-        ptr = chunk.next
+        continue chunk.next
       } else {
-        has_next = false
+        None
       }
-    }
   }
-  None
 }
 
 fn grow(self : LinearMemory, size : Int) -> Bool {
@@ -202,7 +177,8 @@ fn grow(self : LinearMemory, size : Int) -> Bool {
       self.end.next = Some(chunk)
       self.end = chunk
     } else {
-      self.end.memory = {..self.end.memory,
+      self.end.memory = {
+        ..self.end.memory,
         length: self.end.memory.length + delta.lsl(16),
       }
     }
@@ -217,38 +193,27 @@ pub fn allocate(size : Int) -> Option[Memory] {
   if size <= 0 {
     return None
   }
-  let mut ptr : Option[Chunk] = Some(memory.start)
-  let mut has_next = true
-  while has_next {
-    match ptr {
-      None => {
-        has_next = false
-      }
-      Some({ occupied: false, .. } as chunk) => if chunk.memory.length < size {
-        ptr = chunk.next
+  loop Option::Some(memory.start) {
+    Some({ occupied: false, .. } as chunk) =>
+      if chunk.memory.length < size {
+        continue chunk.next
       } else {
         if chunk.memory.length > size {
           let _ = chunk.split(size)?
 
         }
         chunk.occupied = true
-        return Some(chunk.memory)
+        Some(chunk.memory)
       }
-      Some(chunk) => {
-        ptr = chunk.next
-      }
-    }
-  }
-  if memory.grow(size) {
-    allocate(size)
-  } else {
-    None
+    Some(chunk) => continue chunk.next
+    None => if memory.grow(size) { allocate(size) } else { None }
   }
 }
 
 /// return merged or self
 fn Chunk::merge_next(chunk : Chunk, next : Chunk) -> Chunk {
-  chunk.memory = {..chunk.memory,
+  chunk.memory = {
+    ..chunk.memory,
     length: chunk.memory.length + next.memory.length,
   }
   match next.next {
@@ -276,15 +241,11 @@ fn Chunk::split(chunk : Chunk, length : Int) -> Option[Chunk] {
       prev: Some(chunk),
       next: chunk.next,
     }
-    chunk.memory = {..chunk.memory, length, }
+    chunk.memory = { ..chunk.memory, length, }
     chunk.next = Some(new_chunk)
     match new_chunk.next {
-      None => {
-        memory.end = new_chunk
-      }
-      Some(next_next) => {
-        next_next.prev = Some(new_chunk)
-      }
+      None => memory.end = new_chunk
+      Some(next_next) => next_next.prev = Some(new_chunk)
     }
     Some(new_chunk)
   } else {
@@ -318,8 +279,11 @@ pub fn free(self : Memory) -> Option[Unit] {
 }
 
 /// Reallocate Memory 重新分配内存
-pub fn reallocate(self : Memory, _alignment : Int, new_length : Int) ->
-     Option[Memory] {
+pub fn reallocate(
+  self : Memory,
+  _alignment : Int,
+  new_length : Int
+) -> Option[Memory] {
   if self.length <= 0 {
     allocate(new_length)
   } else if new_length <= 0 {
