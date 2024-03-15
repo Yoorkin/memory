@@ -323,14 +323,14 @@ pub fn reallocate(self : Memory, _alignment : Int, new_length : Int) ->
   if self.length <= 0 {
     allocate(new_length)
   } else if new_length <= 0 {
-    self.free()
+    self.free() |> ignore
     None
   } else if new_length < self.length {
     let chunk = self.locate_chunk()?
     if chunk.occupied {
       match chunk.next {
         Some({ occupied: false, .. } as next) => {
-          chunk.merge_next(next)
+          chunk.merge_next(next) |> ignore
           let _ = chunk.split(new_length)
           Some(chunk.memory)
         }
@@ -363,7 +363,7 @@ pub fn reallocate(self : Memory, _alignment : Int, new_length : Int) ->
         Some(new_memory)
       } else {
         chunk.occupied = true
-        chunk.split(new_length)
+        chunk.split(new_length) |> ignore
         memory_copy_ffi(self.offset, chunk.memory.offset, self.length)
         Some(chunk.memory)
       }
