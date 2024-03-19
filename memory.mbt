@@ -123,7 +123,7 @@ priv struct LinearMemory {
   mut end : Chunk
 }
 
-fn debug_write(self : LinearMemory, buffer : Buffer) {
+fn debug_write(self : LinearMemory, buffer : Buffer) -> Unit {
   self.to_array().debug_write(buffer)
 }
 
@@ -267,7 +267,7 @@ fn Chunk::split(chunk : Chunk, length : Int) -> Option[Chunk] {
   }
 }
 
-fn Chunk::free(chunk : Chunk) {
+fn Chunk::free(chunk : Chunk) -> Unit {
   chunk.occupied = false
   let chunk = match chunk.prev {
     Some({ occupied: false, .. } as prev) => prev.merge_next(chunk)
