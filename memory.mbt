@@ -45,6 +45,15 @@ pub fn load64(self : Memory, offset : Int) -> Option[Int64] {
   }
 }
 
+/// Load Float64 读取64位浮点数
+pub fn loadf64(self : Memory, offset : Int) -> Option[Double] {
+  if offset < 0 || offset + 8 > self.length {
+    None
+  } else {
+    Some(loadf64_ffi(self.offset + offset))
+  }
+}
+
 /// Store Byte 存储字节
 pub fn store8(self : Memory, offset : Int, value : Int) -> Option[Unit] {
   if offset < 0 || offset + 1 > self.length {
@@ -65,10 +74,19 @@ pub fn store32(self : Memory, offset : Int, value : Int) -> Option[Unit] {
 
 /// Store Int64 存储64位整数
 pub fn store64(self : Memory, offset : Int, value : Int64) -> Option[Unit] {
-  if offset < 0 || offset + 1 > self.length {
+  if offset < 0 || offset + 8 > self.length {
     None
   } else {
     Some(store64_ffi(self.offset + offset, value))
+  }
+}
+
+/// Store Float64 存储64位浮点数
+pub fn storef64(self : Memory, offset : Int, value : Double) -> Option[Unit] {
+  if offset < 0 || offset + 8 > self.length {
+    None
+  } else {
+    Some(storef64_ffi(self.offset + offset, value))
   }
 }
 
@@ -93,23 +111,27 @@ pub fn store_bytes(self : Memory, bytes : Bytes) -> Unit {
   }
 }
 
-fn load8_ffi(pos : Int) -> Int = "(func (param $pos i32) (result i32) (i32.load8_u (local.get $pos)))"
+extern "wasm" fn load8_ffi(pos : Int) -> Int = #|(func (param $pos i32) (result i32) (i32.load8_u (local.get $pos)))
 
-fn load32_ffi(pos : Int) -> Int = "(func (param $pos i32) (result i32) (i32.load (local.get $pos)))"
+extern "wasm" fn load32_ffi(pos : Int) -> Int = #|(func (param $pos i32) (result i32) (i32.load (local.get $pos)))
 
-fn load64_ffi(pos : Int) -> Int64 = "(func (param $pos i32) (result i64) (i64.load (local.get $pos)))"
+extern "wasm" fn load64_ffi(pos : Int) -> Int64 = #|(func (param $pos i32) (result i64) (i64.load (local.get $pos)))
 
-fn store8_ffi(pos : Int, value : Int) = "(func (param $pos i32) (param $value i32) (i32.store8 (local.get $pos) (local.get $value)))"
+extern "wasm" fn loadf64_ffi(pos : Int) -> Double = #|(func (param $pos i32) (result f64) (f64.load (local.get $pos)))
 
-fn store32_ffi(pos : Int, value : Int) = "(func (param $pos i32) (param $value i32) (i32.store (local.get $pos) (local.get $value)))"
+extern "wasm" fn store8_ffi(pos : Int, value : Int) = #|(func (param $pos i32) (param $value i32) (i32.store8 (local.get $pos) (local.get $value)))
 
-fn store64_ffi(pos : Int, value : Int64) = "(func (param $pos i32) (param $value i64) (i64.store (local.get $pos) (local.get $value)))"
+extern "wasm" fn store32_ffi(pos : Int, value : Int) = #|(func (param $pos i32) (param $value i32) (i32.store (local.get $pos) (local.get $value)))
 
-fn memory_size_ffi() -> Int = "(func (result i32) (memory.size))"
+extern "wasm" fn store64_ffi(pos : Int, value : Int64) = #|(func (param $pos i32) (param $value i64) (i64.store (local.get $pos) (local.get $value)))
 
-fn memory_grow_ffi(delta : Int) -> Int = "(func (param $size i32) (result i32) (memory.grow (local.get $size)))"
+extern "wasm" fn storef64_ffi(pos : Int, value : Double) = #|(func (param $pos i32) (param $value f64) (f64.store (local.get $pos) (local.get $value)))
 
-fn memory_copy_ffi(origin : Int, target : Int, len : Int) = "(func (param $origin i32) (param $target i32) (param $len i32) (memory.copy (local.get $origin) (local.get $target) (local.get $len)))"
+extern "wasm" fn memory_size_ffi() -> Int = #|(func (result i32) (memory.size))
+
+extern "wasm" fn memory_grow_ffi(delta : Int) -> Int = #|(func (param $size i32) (result i32) (memory.grow (local.get $size)))
+
+extern "wasm" fn memory_copy_ffi(origin : Int, target : Int, len : Int) = #|(func (param $origin i32) (param $target i32) (param $len i32) (memory.copy (local.get $origin) (local.get $target) (local.get $len)))
 
 priv struct Chunk {
   mut memory : Memory
