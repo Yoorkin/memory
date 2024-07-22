@@ -81,10 +81,10 @@ pub fn store32(self : Memory, offset : Int, value : Int) -> Unit? {
   if offset < 0 || offset + 4 > self.length {
     None
   } else {
-    self.bytes[offset] = (value & 0xF).to_byte()
-    self.bytes[offset + 1] = ((value >> 8) & 0xF).to_byte()
-    self.bytes[offset + 2] = ((value >> 16) & 0xF).to_byte()
-    self.bytes[offset + 3] = ((value >> 24) & 0xF).to_byte()
+    self.bytes[offset] = (value & 0xFF).to_byte()
+    self.bytes[offset + 1] = ((value >> 8) & 0xFF).to_byte()
+    self.bytes[offset + 2] = ((value >> 16) & 0xFF).to_byte()
+    self.bytes[offset + 3] = ((value >> 24) & 0xFF).to_byte()
     Some(())
   }
 }
@@ -95,13 +95,13 @@ pub fn store64(self : Memory, offset : Int, value : Int64) -> Unit? {
     None
   } else {
     self.bytes[offset] = (value & 0xF).to_byte()
-    self.bytes[offset + 1] = ((value >> 8) & 0xF).to_byte()
-    self.bytes[offset + 2] = ((value >> 16) & 0xF).to_byte()
-    self.bytes[offset + 3] = ((value >> 24) & 0xF).to_byte()
-    self.bytes[offset + 4] = ((value >> 32) & 0xF).to_byte()
-    self.bytes[offset + 5] = ((value >> 40) & 0xF).to_byte()
-    self.bytes[offset + 6] = ((value >> 48) & 0xF).to_byte()
-    self.bytes[offset + 7] = ((value >> 56) & 0xF).to_byte()
+    self.bytes[offset + 1] = ((value >> 8) & 0xFF).to_byte()
+    self.bytes[offset + 2] = ((value >> 16) & 0xFF).to_byte()
+    self.bytes[offset + 3] = ((value >> 24) & 0xFF).to_byte()
+    self.bytes[offset + 4] = ((value >> 32) & 0xFF).to_byte()
+    self.bytes[offset + 5] = ((value >> 40) & 0xFF).to_byte()
+    self.bytes[offset + 6] = ((value >> 48) & 0xFF).to_byte()
+    self.bytes[offset + 7] = ((value >> 56) & 0xFF).to_byte()
     Some(())
   }
 }
@@ -117,7 +117,7 @@ pub fn storef64(self : Memory, offset : Int, value : Double) -> Unit? {
 
 /// Load Bytes 读取数据块
 pub fn load_bytes(self : Memory) -> Bytes {
-  let bytes = Bytes::make(self.length)
+  let bytes = Bytes::new(self.length)
   bytes.blit(0, self.bytes, 0, self.length)
   bytes
 }
@@ -133,20 +133,22 @@ pub fn store_bytes(self : Memory, bytes : Bytes) -> Unit {
 }
 
 extern "wasm" fn get_bytes(offset : Int) -> Bytes =
-  #|(func (param i32) (result i32) local.get 0 i32.const 8 i32.sub)
+  #|(func (param i32) (result i32) local.get 0 i32.const 8 i32.sub call $rael.incref local.get 0 i32.const 8 i32.sub)
 
 extern "wasm" fn get_offset(bytes : Bytes) -> Int =
-  #|(func (param i32) (result i32) local.get 0 call $rael.incref local.get 0 i32.const 8 i32.add)
+  #|(func (param i32) (result i32) local.get 0 call $rael.decref local.get 0 i32.const 8 i32.add)
 
 extern "wasm" fn alloc(bytes : Bytes) =
   #|(func (param i32))
 
 extern "wasm" fn release(bytes : Bytes) =
-  #|(func (param i32) local.get 0 call $rael.incref local.get 0 call $rael.incref)
+  #|(func (param i32) local.get 0 call $rael.decref local.get 0 call $rael.decref)
+
+extern "wasm" fn is_bytes(offset : Int) -> Bool =
+  #|(func (param i32) (result i32) local.get 0 i32.const 4 i32.sub i32.load8_u i32.const 246 i32.eq)
 
 fn verify(offset : Int, length : Int) -> Bool {
-  // TODO
-  true
+  is_bytes(offset) && get_bytes(offset).length() == length
 }
 
 /// Create memory 创建内存
@@ -164,7 +166,7 @@ pub fn allocate(size : Int) -> Memory? {
   if size <= 0 {
     return None
   }
-  let bytes = Bytes::make(size)
+  let bytes = Bytes::new(size)
   alloc(bytes)
   Some({ offset: get_offset(bytes), length: size, bytes })
 }

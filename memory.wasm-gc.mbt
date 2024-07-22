@@ -92,7 +92,7 @@ pub fn storef64(self : Memory, offset : Int, value : Double) -> Option[Unit] {
 
 /// Load Bytes 读取数据块
 pub fn load_bytes(self : Memory) -> Bytes {
-  let bytes = Bytes::make(self.length)
+  let bytes = Bytes::new(self.length)
   for i = 0; i < self.length; i = i + 1 {
     bytes[i] = load8_ffi(self.offset + i).to_byte()
   }
