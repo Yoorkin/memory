@@ -16,10 +16,10 @@
 pub(readonly) struct Memory {
   offset : Int
   length : Int
-} derive(Debug)
+} derive(Show)
 
 /// Load Byte 读取字节
-pub fn load8(self : Memory, offset : Int) -> Option[Int] {
+pub fn load8(self : Memory, offset : Int) -> Int? {
   if offset < 0 || offset + 1 > self.length {
     None
   } else {
@@ -28,7 +28,7 @@ pub fn load8(self : Memory, offset : Int) -> Option[Int] {
 }
 
 /// Load Int32 读取32位整数
-pub fn load32(self : Memory, offset : Int) -> Option[Int] {
+pub fn load32(self : Memory, offset : Int) -> Int? {
   if offset < 0 || offset + 4 > self.length {
     None
   } else {
@@ -37,7 +37,7 @@ pub fn load32(self : Memory, offset : Int) -> Option[Int] {
 }
 
 /// Load Int64 读取64位整数
-pub fn load64(self : Memory, offset : Int) -> Option[Int64] {
+pub fn load64(self : Memory, offset : Int) -> Int64? {
   if offset < 0 || offset + 8 > self.length {
     None
   } else {
@@ -46,7 +46,7 @@ pub fn load64(self : Memory, offset : Int) -> Option[Int64] {
 }
 
 /// Load Float64 读取64位浮点数
-pub fn loadf64(self : Memory, offset : Int) -> Option[Double] {
+pub fn loadf64(self : Memory, offset : Int) -> Double? {
   if offset < 0 || offset + 8 > self.length {
     None
   } else {
@@ -55,7 +55,7 @@ pub fn loadf64(self : Memory, offset : Int) -> Option[Double] {
 }
 
 /// Store Byte 存储字节
-pub fn store8(self : Memory, offset : Int, value : Int) -> Option[Unit] {
+pub fn store8(self : Memory, offset : Int, value : Int) -> Unit? {
   if offset < 0 || offset + 1 > self.length {
     None
   } else {
@@ -64,7 +64,7 @@ pub fn store8(self : Memory, offset : Int, value : Int) -> Option[Unit] {
 }
 
 /// Store Int32 存储32位整数
-pub fn store32(self : Memory, offset : Int, value : Int) -> Option[Unit] {
+pub fn store32(self : Memory, offset : Int, value : Int) -> Unit? {
   if offset < 0 || offset + 4 > self.length {
     None
   } else {
@@ -73,7 +73,7 @@ pub fn store32(self : Memory, offset : Int, value : Int) -> Option[Unit] {
 }
 
 /// Store Int64 存储64位整数
-pub fn store64(self : Memory, offset : Int, value : Int64) -> Option[Unit] {
+pub fn store64(self : Memory, offset : Int, value : Int64) -> Unit? {
   if offset < 0 || offset + 8 > self.length {
     None
   } else {
@@ -82,7 +82,7 @@ pub fn store64(self : Memory, offset : Int, value : Int64) -> Option[Unit] {
 }
 
 /// Store Float64 存储64位浮点数
-pub fn storef64(self : Memory, offset : Int, value : Double) -> Option[Unit] {
+pub fn storef64(self : Memory, offset : Int, value : Double) -> Unit? {
   if offset < 0 || offset + 8 > self.length {
     None
   } else {
@@ -147,17 +147,17 @@ extern "wasm" fn memory_copy_ffi(origin : Int, target : Int, len : Int) =
 priv struct Chunk {
   mut memory : Memory
   mut occupied : Bool
-  mut prev : Option[Chunk]
-  mut next : Option[Chunk]
-} derive(Debug)
+  mut prev : Chunk?
+  mut next : Chunk?
+} derive(Show)
 
 priv struct LinearMemory {
   mut start : Chunk
   mut end : Chunk
 }
 
-fn debug_write(self : LinearMemory, buffer : Buffer) -> Unit {
-  self.to_array().debug_write(buffer)
+impl Show for LinearMemory with output(self : LinearMemory, logger : Logger) -> Unit {
+  (self.to_array() as Show).output(logger)
 }
 
 fn to_array(self : LinearMemory) -> Array[(Memory, Bool)] {
@@ -190,12 +190,11 @@ let memory : LinearMemory = {
 /// Create memory 创建内存
 /// Only valid if it is actually an allocated memory that is in use
 /// 当该内存确实为被分配的内存时输入合法
-pub fn Memory::make(offset : Int, length : Int) -> Option[Memory] {
-  let chunk = { offset, length }.locate_chunk()?
-  Some(chunk.memory)
+pub fn Memory::make(offset : Int, length : Int) -> Memory? {
+  { offset, length }.locate_chunk().map(fn { chunk => chunk.memory })
 }
 
-fn Memory::locate_chunk(m : Memory) -> Option[Chunk] {
+fn Memory::locate_chunk(m : Memory) -> Chunk? {
   loop Option::Some(memory.start) {
     None => None
     Some(chunk) =>
@@ -236,7 +235,7 @@ fn grow(self : LinearMemory, size : Int) -> Bool {
 }
 
 /// Allocate memory 分配内存
-pub fn allocate(size : Int) -> Option[Memory] {
+pub fn allocate(size : Int) -> Memory? {
   if size <= 0 {
     return None
   }
@@ -246,7 +245,10 @@ pub fn allocate(size : Int) -> Option[Memory] {
         continue chunk.next
       } else {
         if chunk.memory.length > size {
-          chunk.split(size)? |> ignore
+          match chunk.split(size) {
+            None => return None
+            _ => ()
+          }
         }
         chunk.occupied = true
         Some(chunk.memory)
@@ -276,7 +278,7 @@ fn Chunk::merge_next(chunk : Chunk, next : Chunk) -> Chunk {
 }
 
 /// return next
-fn Chunk::split(chunk : Chunk, length : Int) -> Option[Chunk] {
+fn Chunk::split(chunk : Chunk, length : Int) -> Chunk? {
   if length < chunk.memory.length {
     let new_chunk : Chunk = {
       memory: {
@@ -312,8 +314,11 @@ fn Chunk::free(chunk : Chunk) -> Unit {
 }
 
 /// Free Memory 释放内存
-pub fn free(self : Memory) -> Option[Unit] {
-  let chunk = self.locate_chunk()?
+pub fn free(self : Memory) -> Unit? {
+  let chunk = match self.locate_chunk() {
+    Some(chunk) => chunk
+    None => return None
+  }
   if chunk.occupied {
     Some(chunk.free())
   } else {
@@ -322,18 +327,17 @@ pub fn free(self : Memory) -> Option[Unit] {
 }
 
 /// Reallocate Memory 重新分配内存
-pub fn reallocate(
-  self : Memory,
-  _alignment : Int,
-  new_length : Int
-) -> Option[Memory] {
+pub fn reallocate(self : Memory, _alignment : Int, new_length : Int) -> Memory? {
   if self.length <= 0 {
     allocate(new_length)
   } else if new_length <= 0 {
     self.free() |> ignore
     None
   } else if new_length < self.length {
-    let chunk = self.locate_chunk()?
+    let chunk = match self.locate_chunk() {
+      None => return None
+      Some(chunk) => chunk
+    }
     if chunk.occupied {
       match chunk.next {
         Some({ occupied: false, .. } as next) => {
@@ -350,7 +354,10 @@ pub fn reallocate(
       None
     }
   } else {
-    let chunk = self.locate_chunk()?
+    let chunk = match self.locate_chunk() {
+      None => return None
+      Some(chunk) => chunk
+    }
     if chunk.occupied {
       chunk.occupied = false
       let chunk = match chunk.prev {
