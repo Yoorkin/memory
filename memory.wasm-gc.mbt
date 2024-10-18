@@ -152,7 +152,7 @@ priv struct Chunk {
 } derive(Show)
 
 priv struct LinearMemory {
-  mut start : Chunk
+  start : Chunk
   mut end : Chunk
 }
 
